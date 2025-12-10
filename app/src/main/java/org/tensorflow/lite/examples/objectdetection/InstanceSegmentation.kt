@@ -2,6 +2,7 @@ package org.tensorflow.lite.examples.objectdetection
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.SystemClock
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
@@ -16,6 +17,8 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import org.tensorflow.lite.examples.objectdetection.MetaData.extractNamesFromLabelFile
 import org.tensorflow.lite.examples.objectdetection.MetaData.extractNamesFromMetadata
 import java.nio.ByteBuffer
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 class InstanceSegmentation(
     context: Context,
@@ -136,42 +139,12 @@ class InstanceSegmentation(
             return
         }
 
-        // --- COORDINATE CORRECTION FOR ASPECT RATIO DISTORTION ---
-        val frameWidth = frame.width.toFloat()
-        val frameHeight = frame.height.toFloat()
-        val tensorW = tensorWidth.toFloat()
-        val tensorH = tensorHeight.toFloat()
-
-        // Calculate the inverse scaling factors. The coordinates are currently scaled
-        // based on the distorted image (tensorW/H), we need to correct them to the
-        // original frame aspect ratio (frameW/H).
-        val scaleX = tensorW / frameWidth
-        val scaleY = tensorH / frameHeight
-
-        val correctedBoxes = bestBoxes.map { output ->
-            output.copy(
-                // Apply the inverse scaling to all coordinate/dimension fields
-                x1 = output.x1 * scaleX,
-                y1 = output.y1 * scaleY,
-                x2 = output.x2 * scaleX,
-                y2 = output.y2 * scaleY,
-                cx = output.cx * scaleX,
-                cy = output.cy * scaleY,
-                w = output.w * scaleX,
-                h = output.h * scaleY
-            )
-        }
-
-
         val maskProto = reshapeMaskOutput(maskProtoBuffer.floatArray)
 
-        val segmentationResults = correctedBoxes.mapIndexed { index, correctedBox ->
-            val originalBox = bestBoxes[index] // Get the box with distorted coordinates
-
+        val segmentationResults = bestBoxes.map {
             SegmentationResult(
-                box = correctedBox, // Use the CORRECTED box for the final result (for drawing the box)
-                // Use the ORIGINAL box for getFinalMask to correctly crop the distorted maskProto
-                mask = getFinalMask(frameWidth.toInt(), frameHeight.toInt(), originalBox, maskProto)
+                box = it,
+                mask = getFinalMask(frame.width, frame.height, it, maskProto)
             )
         }
 
